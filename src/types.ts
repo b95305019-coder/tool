@@ -32,6 +32,7 @@ export interface FieldConfig {
   isCurrency?: boolean; // Whether to format with thousand separators, e.g., 12,345
   isPercent?: boolean; // Whether to format as percentage, e.g. 67.5%
   isMonth?: boolean; // Whether to output as YYYY-MM only
+  formula?: string; // Calculated custom formula e.g. "{商品單價} * {訂購數量}"
 }
 
 export interface SchemaField {

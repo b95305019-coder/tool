@@ -58,6 +58,33 @@ import { generateMockData } from "./generator";
 // Local automatic Taiwanese field classifier
 function inferLocalFieldType(name: string): { type: FieldType; reason: string; config: FieldConfig } {
   const trim = name.trim();
+  if (/統編|統一編號|統一編碼|營利事業/i.test(trim)) {
+    return { type: "text", reason: "符合台灣營利事業統一編號，將依據中華民國財政部 8 位數驗證法（含除5與除10校驗）生層合法統編數據", config: {} };
+  }
+  if (/信用卡|卡號|卡貝|刷卡/i.test(trim)) {
+    return { type: "text", reason: "符合信用卡卡號，將套用 Luhn 演算法 Checksum，自動產生高保真 16 碼合法測試卡號", config: {} };
+  }
+  if (/車牌|車牌號碼|車號/i.test(trim)) {
+    return { type: "text", reason: "符合台灣汽機車牌照格式，隨機混合新式 (AAA-9999) 與舊式 (AA-9999) 高保真車牌", config: {} };
+  }
+  if (/發票號碼|發票$/i.test(trim) && !/載具/i.test(trim)) {
+    return { type: "pattern", reason: "符合統一發票號碼，自動調整為標準字軌「??-########」兩碼英文與八碼數字格式", config: { pattern: "??-########" } };
+  }
+  if (/載具|發票載具|手機載具/i.test(trim)) {
+    return { type: "text", reason: "符合電子發票手機條碼載具，產生標準斜線開頭「/」加七碼大寫英數組合之格式", config: {} };
+  }
+  if (/公司|企業|行號|商號|廠商|分公司|開發商/i.test(trim)) {
+    return { type: "text", reason: "符合台灣企業公司名稱，將組合台灣縣市行政區字首與多元產業行號字尾，產生極擬真的法人名稱", config: {} };
+  }
+  if (/銀行|銀行名稱|金融機構|Bank/i.test(trim) && !/帳號|卡號/i.test(trim)) {
+    return { type: "text", reason: "符合台灣金融行庫名稱，將隨機生成帶三碼金融機構代碼之標準商業銀行名冊數據", config: {} };
+  }
+  if (/帳號|銀行帳號|匯款帳號|收款帳號|戶頭|Account.*No/i.test(trim)) {
+    return { type: "text", reason: "符合台灣銀行存款或匯款帳號格式，自動產生 10 至 14 碼合規商務交易帳戶數字組合", config: {} };
+  }
+  if (/健保|健保卡|健保卡號|NHI/i.test(trim)) {
+    return { type: "text", reason: "符合台灣全民健康保險卡號，隨機產出 12 碼標準晶片健保卡號，支援空格美化", config: {} };
+  }
   if (/姓名|收件人|患者|顧客|客戶|聯絡人|負責人|雇員|員工姓名|會員姓名/i.test(trim) && !/商品|產品|品項|型態|軟體|硬體|機型|車款|店名|病名|分區|類別/i.test(trim)) {
     return { type: "name", reason: "符合人名常用關鍵字，預設真實中文姓名組合", config: {} };
   }
@@ -2231,6 +2258,31 @@ export default function App() {
                                   </label>
                                 )}
                               </div>
+
+                              {/* 欄位計算公式設定 (Mathematical Custom Formula Settings) */}
+                              {(field.type === "integer" || field.type === "decimal") && (
+                                <div className="border-t border-slate-150 mt-2.5 pt-2.5 flex flex-col gap-2">
+                                  <span className="text-[10px] font-bold text-indigo-650 flex items-center gap-1.5 uppercase font-mono tracking-wider">
+                                    <Sparkles className="h-3 w-3 text-indigo-500" /> 智慧計算公式設定 (Formula Column)
+                                  </span>
+                                  
+                                  <label className="block text-[10px] text-slate-500 font-semibold font-sans">
+                                    自訂計算公式 (例：<code>{"{單價} * {數量}"}</code>)
+                                    <input
+                                      type="text"
+                                      placeholder="直接輸入如：{商品單價} * {訂購數量}"
+                                      value={field.config.formula ?? ""}
+                                      onChange={(e) => {
+                                        handleUpdateFieldConfig(field.id, { ...field.config, formula: e.target.value });
+                                      }}
+                                      className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-[10px] focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono font-semibold"
+                                    />
+                                    <span className="text-[9px] text-slate-400 font-normal leading-tight mt-0.5 block">
+                                      支援 <code>+ - * / ( ) . </code> 等四則運算，變數請用 <code>{"{欄位名稱}"}</code> 括起，數值產出將精準完美對齊。
+                                    </span>
+                                  </label>
+                                </div>
+                              )}
                             </div>
                           </motion.div>
                         )}
