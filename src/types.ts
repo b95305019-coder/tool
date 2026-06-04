@@ -42,6 +42,20 @@ export interface SchemaField {
   config: FieldConfig;
 }
 
+export interface SampleFieldSpec {
+  fieldName: string;
+  type: FieldType;
+  config: FieldConfig;
+  reason: string;
+}
+
+export interface TrainingSessionItem {
+  id: string;
+  fileName: string;
+  uploadTime: string;
+  fields: SampleFieldSpec[];
+}
+
 export interface PresetTemplate {
   name: string;
   description: string;

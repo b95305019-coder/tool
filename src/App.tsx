@@ -45,12 +45,14 @@ import {
   AlertTriangle,
   AlertCircle,
   Brain,
+  History,
+  FolderHeart,
   X
 } from "lucide-react";
 
 import * as XLSX from "xlsx";
 
-import { SchemaField, FieldType, FieldConfig, PRESET_TEMPLATES, PresetTemplate } from "./types";
+import { SchemaField, FieldType, FieldConfig, PRESET_TEMPLATES, PresetTemplate, TrainingSessionItem } from "./types";
 import { generateMockData } from "./generator";
 
 // Local automatic Taiwanese field classifier
@@ -731,6 +733,7 @@ export default function App() {
 
   // Local Spec Knowledge Base state
   const [memoryFields, setMemoryFields] = useState<Record<string, { type: FieldType; config: FieldConfig; reason: string }>>({});
+  const [trainingHistory, setTrainingHistory] = useState<TrainingSessionItem[]>([]);
   const [isDraggingMultiple, setIsDraggingMultiple] = useState<boolean>(false);
   const [batchLearningReport, setBatchLearningReport] = useState<string | null>(null);
   const [memoryQuery, setMemoryQuery] = useState("");
@@ -806,6 +809,14 @@ export default function App() {
       console.warn("Failed to load user_fields_memory:", e);
     }
 
+    // Load local training history
+    try {
+      const rawHistory = localStorage.getItem("user_training_history") || "[]";
+      setTrainingHistory(JSON.parse(rawHistory));
+    } catch (e) {
+      console.warn("Failed to load user_training_history:", e);
+    }
+
     // Initialize with a preset template on load
     handleApplyTemplate(PRESET_TEMPLATES[0]);
   }, []);
@@ -822,6 +833,7 @@ export default function App() {
     // Create copy of memoryFields
     const updatedMemory = { ...memoryFields };
     const colDetails: { header: string; samples: string[]; fileName: string; sheetName: string }[] = [];
+    const fileToHeadersMap: Record<string, string[]> = {};
     
     for (const file of files) {
       await new Promise<void>((resolve) => {
@@ -842,6 +854,13 @@ export default function App() {
                 headers.forEach((headerText: any, idx: number) => {
                   const header = String(headerText || "").trim();
                   if (!header) return;
+                  
+                  if (!fileToHeadersMap[file.name]) {
+                    fileToHeadersMap[file.name] = [];
+                  }
+                  if (!fileToHeadersMap[file.name].includes(header)) {
+                    fileToHeadersMap[file.name].push(header);
+                  }
                   
                   const colValues: string[] = [];
                   for (const row of dataRows) {
@@ -887,6 +906,44 @@ export default function App() {
       });
     }
 
+    const saveHistory = (finalMemory: Record<string, { type: FieldType; config: FieldConfig; reason: string }>) => {
+      const sessionHistoryItems: TrainingSessionItem[] = Object.entries(fileToHeadersMap).map(([fName, headersSeen]) => {
+        const sampleFields = headersSeen.map(header => {
+          const mem = finalMemory[header] || { type: "text" as FieldType, config: {} as FieldConfig, reason: "未知標準欄位" };
+          return {
+            fieldName: header,
+            type: mem.type,
+            config: mem.config,
+            reason: mem.reason
+          };
+        });
+        return {
+          id: crypto.randomUUID(),
+          fileName: fName,
+          uploadTime: new Date().toLocaleTimeString("zh-TW", { hour12: false }) + " (" + new Date().toLocaleDateString("zh-TW") + ")",
+          fields: sampleFields
+        };
+      });
+
+      try {
+        const rawStored = localStorage.getItem("user_training_history") || "[]";
+        let existing: TrainingSessionItem[] = [];
+        try {
+          existing = JSON.parse(rawStored);
+          if (!Array.isArray(existing)) {
+            existing = [];
+          }
+        } catch (errJson) {
+          existing = [];
+        }
+        const combined = [...sessionHistoryItems, ...existing].slice(0, 30);
+        setTrainingHistory(combined);
+        localStorage.setItem("user_training_history", JSON.stringify(combined));
+      } catch (e) {
+        console.warn("Failed to write training history to storage:", e);
+      }
+    };
+
     // AI-Assisted High-Fidelity deep learning override
     if (enableAiTrainingInterpret && aiAvailable && colDetails.length > 0) {
       setUploadNotification("正在啟動 AI 協助訓練理解模型 (正在深度分析欄位關係與最適格式)...");
@@ -926,6 +983,7 @@ export default function App() {
           
           setMemoryFields(updatedMemory);
           localStorage.setItem("user_fields_memory", JSON.stringify(updatedMemory));
+          saveHistory(updatedMemory);
           
           setBatchLearningReport(`✓ 🤖 規格智慧字典「AI 深度理解訓練」順利完成！已自 ${files.length} 個訓練檔中自動挖掘 ${aiNewlyLearned} 個全新欄位並藉由 AI 深入理解其模糊格式；另對 ${aiUpdatedCount} 個既有欄位進行高密度訓練配置校正！`);
           setTimeout(() => setBatchLearningReport(null), 10000);
@@ -944,6 +1002,7 @@ export default function App() {
     } catch (e) {
       console.warn("Failed to write memory to storage:", e);
     }
+    saveHistory(updatedMemory);
     
     setBatchLearningReport(`✓ 規格智慧字典線上學習完成！已自 ${files.length} 個訓練檔中，自動分析出 ${newlyLearned} 個全新未知欄位，並校正更新 ${updatedCount} 個既有欄位之本地格式。`);
     setTimeout(() => setBatchLearningReport(null), 8000);
@@ -2615,6 +2674,104 @@ export default function App() {
                           <div className="mt-2 text-[10px] text-violet-700 bg-violet-50 border border-violet-150 p-2.5 rounded-lg flex items-start gap-1.5 leading-relaxed shadow-xs">
                             <CheckCircle2 className="h-4 w-4 text-violet-650 shrink-0 mt-0.5" />
                             <span>{batchLearningReport}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 歷史訓練檔記憶與一鍵套用還原區 */}
+                      <div className="border-t border-slate-100 pt-3 flex flex-col gap-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-violet-750 uppercase tracking-wider flex items-center gap-1">
+                            <History className="h-3.5 w-3.5 text-violet-600 shrink-0" />
+                            歷史訓練檔記憶庫 ({trainingHistory.length} 個已辨識來源)
+                          </span>
+                          {trainingHistory.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTrainingHistory([]);
+                                localStorage.removeItem("user_training_history");
+                              }}
+                              className="text-[9px] text-rose-650 hover:text-rose-700 font-semibold"
+                            >
+                              忘記全部歷史
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-500 leading-normal mb-1">
+                          系統自動記住了匯入過的檔案名稱、時間與所有辨識規格。您可隨時點擊 <strong>「套用欄位配置」</strong> 一鍵組裝出契合該檔案結構的高保真測試數據！
+                        </p>
+
+                        {trainingHistory.length === 0 ? (
+                          <div className="bg-slate-50 p-3 rounded-lg border border-slate-150 text-center text-[10px] text-slate-400 italic">
+                            目前尚無歷史檔案學習紀錄，請先由上方拖入 Excel / CSV 進行學習。
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto pr-1">
+                            {trainingHistory.map((item) => (
+                              <div key={item.id} className="border border-violet-100 hover:border-violet-300 bg-violet-500/[0.02] hover:bg-violet-500/[0.04] p-2.5 rounded-lg flex flex-col gap-1.5 transition text-xs">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold text-slate-800 text-[11px] truncate flex items-center gap-1" title={item.fileName}>
+                                    <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                                    {item.fileName}
+                                  </span>
+                                  <span className="text-[8px] text-slate-400 font-mono shrink-0">
+                                    {item.uploadTime}
+                                  </span>
+                                </div>
+
+                                <div className="flex flex-wrap gap-1 leading-tight my-1">
+                                  {item.fields.map((fSpec, fIdx) => (
+                                    <span key={fIdx} className="inline-flex items-center gap-0.5 bg-slate-50 border border-slate-150 text-slate-600 px-1 py-0.5 rounded text-[8.5px] font-mono" title={`${fSpec.fieldName}: ${fSpec.type} (${fSpec.reason})`}>
+                                      <span className="font-bold text-slate-700">{fSpec.fieldName}</span>
+                                      <span className="text-[8px] text-violet-650 bg-violet-50 px-0.5 rounded">({fSpec.type})</span>
+                                    </span>
+                                  ))}
+                                </div>
+
+                                <div className="flex items-center justify-between pt-1.5 border-t border-dashed border-slate-150 text-[10px]">
+                                  <span className="text-[9px] text-slate-400">
+                                    內含 <strong>{item.fields.length}</strong> 個智慧特徵欄位
+                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const schemaFields: SchemaField[] = item.fields.map(f => {
+                                          return {
+                                            id: crypto.randomUUID(),
+                                            fieldName: f.fieldName,
+                                            type: f.type,
+                                            reason: f.reason,
+                                            config: f.config
+                                          };
+                                        });
+                                        setFields(schemaFields);
+                                        setBatchLearningReport(`✓ 成功從「${item.fileName}」歷史訓練檔記憶中重載 ${schemaFields.length} 個格式化規格！已套用至當前欄位設計。`);
+                                        setTimeout(() => setBatchLearningReport(null), 8000);
+                                      }}
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold text-violet-750 bg-violet-100 hover:bg-violet-200 border border-violet-150 rounded transition"
+                                    >
+                                      <Sparkles className="h-2.5 w-2.5 text-violet-750" />
+                                      套用欄位配置
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const updated = trainingHistory.filter(h => h.id !== item.id);
+                                        setTrainingHistory(updated);
+                                        localStorage.setItem("user_training_history", JSON.stringify(updated));
+                                      }}
+                                      className="p-0.5 hover:bg-rose-50 hover:text-rose-600 rounded text-slate-400 transition"
+                                      title="忘記此檔案"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>
