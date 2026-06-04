@@ -1,0 +1,6 @@
+{
+  "name": "台灣測試資料建模與生成器",
+  "description": "專業台灣情境測試數據建模與生成工具，支援真實中文姓名、居住地址、手機、台灣身分證及多種關聯性資料推導，可一鍵匯出 JSON、CSV 或 SQL。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
